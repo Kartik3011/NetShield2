@@ -1,27 +1,46 @@
-# 1. Base Image: Use an official Python image
+# 1. Base Image: Use the official Python image for simplicity and size reduction.
 FROM python:3.11-slim
 
-# 2. Environment Variables: Set the port Streamlit will use
-ENV PORT 8501
-EXPOSE 8501
+# Set environment variables for non-interactive commands
+ENV DEBIAN_FRONTEND=noninteractive
 
-# 3. System Dependencies (CRITICAL: Installs FFmpeg)
-# ffmpeg is a system binary required by yt-dlp, so it must be installed via apt.
-RUN apt-get update && apt-get install -y ffmpeg \
-    # The clean command should be separate for robustness
+# 2. Install System Dependencies (CRITICAL: Installs FFmpeg and git)
+# FFmpeg is still necessary for the 'Content Forensic' page (yt-dlp audio extraction).
+# git is often needed for installing some Python packages or dependencies.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ffmpeg \
+        git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# 3. Environment Variables: Set the port Streamlit will use
+ENV PORT=8501
+EXPOSE 8501
 
 # 4. Set working directory
 WORKDIR /app
 
-# 5. Copy requirements and install Python libraries
-# yt-dlp is installed here via requirements.txt, and ffmpeg is already installed above.
+# 5. Copy requirements
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# 6. Copy all other application code
+# 6. Install Python libraries (CRITICAL FIX: Use --break-system-packages for Python 3.11+)
+# This flag overrides the 'externally-managed-environment' error.
+RUN pip install --no-cache-dir -r requirements.txt --break-system-packages
+
+# 7. Copy all other application code
 COPY . .
 
-# 7. Entrypoint: Command to run the Streamlit app
+# 8. Create Streamlit secrets file
+# This step forces the creation of the secrets.toml file 
+RUN mkdir -p /root/.streamlit/ && \
+    sh -c 'printf "[secrets]\n\
+    YOUTUBE_API_KEY=\"$YOUTUBE_API_KEY\"\n\
+    ASSEMBLYAI_API_KEY=\"$ASSEMBLYAI_API_KEY\"\n\
+    GROQ_API_KEY=\"$GROQ_API_KEY\"\n\
+    NVIDIA_API_KEY=\"$NVIDIA_API_KEY\"\n\
+    NEWS_API_KEY=\"$NEWS_API_KEY\"\n\
+    " > /root/.streamlit/secrets.toml'
+
+# 9. Entrypoint: Command to run the Streamlit app
 ENTRYPOINT ["streamlit", "run", "Dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
