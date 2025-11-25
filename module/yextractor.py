@@ -6,7 +6,8 @@ from datetime import datetime
 import streamlit as st 
 
 
-api_key = st.secrets["YOUTUBE_API_KEY"] 
+
+api_key = "AIzaSyAczie4t04RKRQGO-Ea5jUarTR7S2-XwxQ" 
 youtube = build('youtube', 'v3', developerKey=api_key)
 
 def videoData(video_id):
