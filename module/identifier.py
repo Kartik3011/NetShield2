@@ -3,8 +3,8 @@ import streamlit as st
 
 client = OpenAI(
   base_url = "https://integrate.api.nvidia.com/v1",
-  api_key = st.secrets["NVIDIA_API_KEY"] 
-  timeout=60.0
+  api_key = "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", 
+  timeout=300.0
 )
 
 def validator(transcribed_text,user_content):
@@ -25,18 +25,14 @@ def validator(transcribed_text,user_content):
         f"News Article Summary:\n\"{user_content}\""
     )
     completion = client.chat.completions.create(
-        model="meta/llama3-70b-instruct",
+        model="mistralai/mistral-7b-instruct-v0.3",  #mistralai/mistral-7b-instruct-v0.3 
+        #meta/llama3-70b-instruct
         messages=[{"role":"user","content":a}],
         temperature=0.5,
         top_p=1,
         max_tokens=1024,
-        stream=True
+       
     )
-    stt=""
-    for chunk in completion:
-        if chunk.choices[0].delta.content is not None:
-            
-            print(chunk.choices[0].delta.content, end="")
-            stt+=chunk.choices[0].delta.content
+    stt = completion.choices[0].message.content.strip()
 
     return stt
