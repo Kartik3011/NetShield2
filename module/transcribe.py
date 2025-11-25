@@ -27,7 +27,7 @@ def download_youtube_audio(youtube_url, output_path="audio.mp3",i=0):
 
 def transcribe_audio(file_path):
     try:
-        aai.settings.api_key = st.secrets["ASSEMBLYAI_API_KEY"]  
+        aai.settings.api_key = "33d8dfb548094b519181b99a0582682d"
 
         # enable Automatic Language Detection
         config = aai.TranscriptionConfig(language_detection=True)
