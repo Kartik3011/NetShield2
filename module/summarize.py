@@ -3,7 +3,7 @@ import streamlit as st
 
 client = OpenAI(
   base_url = "https://integrate.api.nvidia.com/v1",
-  api_key = st.secrets["NVIDIA_API_KEY"] 
+  api_key = "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"
 )
  
 def sumup(a):
