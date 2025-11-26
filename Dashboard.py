@@ -252,7 +252,7 @@ KNOWLEDGE_BASE = """
 """
 
 try:
-    client = groq.Groq(api_key="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")
+    client = groq.Groq(api_key="API_KEY_WILLBEHERE")
     chat_available = True
 except Exception:
     client = None
