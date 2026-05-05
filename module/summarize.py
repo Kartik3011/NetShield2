@@ -29,7 +29,7 @@ SUMMARY REQUIRED:
 """ + input_text # FIX 2: Use the truncated 'input_text' to build the prompt
 
     completion = client.chat.completions.create(
-    model="meta/llama-3.3-70b-instruct",
+    model="meta/llama-3.1-8b-instruct",
     messages=[{"role":"user","content":con}],
     temperature=0.4,
     top_p=0.7,
