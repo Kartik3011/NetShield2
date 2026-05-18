@@ -1,434 +1,210 @@
-import requests
-from bs4 import BeautifulSoup
-import json
-from typing import List
-import streamlit as st
-from openai import OpenAI
+# FULL WORKING 
 
-# =========================================================
-# STREAMLIT SECRETS CHECK
-# =========================================================
+import csv
+from googleapiclient.discovery import build
+from datetime import datetime
+import streamlit as st 
 
-required_secrets = ["NVIDIA_API_KEY", "NEWS_API_KEY"]
 
-missing_secrets = [key for key in required_secrets if key not in st.secrets]
+api_key = st.secrets["YOUTUBE_API_KEY"] 
+youtube = build('youtube', 'v3', developerKey=api_key)
 
-if missing_secrets:
-    st.error(f"Missing Streamlit secrets: {missing_secrets}")
-    st.stop()
-
-# =========================================================
-# NVIDIA CLIENT
-# =========================================================
-
-client = OpenAI(
-    base_url="https://integrate.api.nvidia.com/v1",
-    api_key=st.secrets["NVIDIA_API_KEY"],
-    timeout=120
-)
-
-# =========================================================
-# NEWSAPI CONFIG
-# =========================================================
-
-NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
-
-NEWS_API_ENDPOINT = "https://newsapi.org/v2/everything"
-
-# =========================================================
-# DATA CLASS
-# =========================================================
-
-class News:
-    def __init__(
-        self,
-        headline,
-        url,
-        publisher,
-        description="",
-        content="",
-        pubDate=""
-    ):
-        self.headline = headline
-        self.url = url
-        self.publisher = publisher
-        self.description = description
-        self.content = content
-        self.pubDate = pubDate
-
-    def __repr__(self):
-        return (
-            f"headline={self.headline}\n"
-            f"url={self.url}\n"
-            f"publisher={self.publisher}\n"
-            f"description={self.description}\n"
-            f"content={self.content}\n"
-            f"pubDate={self.pubDate}"
-        )
-
-# =========================================================
-# GOOGLE ARTICLE CONTENT EXTRACTION
-# =========================================================
-
-def _extract_google_content(url):
+def videoData(video_id):
 
     try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            )
-        }
-
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=10,
-            allow_redirects=True
+        request = youtube.videos().list(
+            part="statistics",
+            id=video_id
         )
+        response = request.execute()
 
-        if response.status_code != 200:
-            return {}
+        # Video statistics
+        video_stats = response['items'][0]['statistics']
+        views = int(video_stats.get('viewCount', 0))
+        likes = int(video_stats.get('likeCount', 0))
+        dislikes = int(video_stats.get('dislikeCount', 0))
+        comment_count = int(video_stats.get('commentCount', 0))
 
-        soup = BeautifulSoup(response.content, "html.parser")
-
-        masterjson = {}
-
-        scripts = soup.find_all(
-            "script",
-            {"type": "application/ld+json"}
-        )
-
-        for script in scripts:
-
-            if not script.string:
-                continue
-
-            try:
-                data = json.loads(script.string)
-
-                if isinstance(data, dict):
-                    masterjson.update(data)
-
-            except Exception:
-                continue
-
-        return masterjson
+        return views, likes, dislikes, comment_count
 
     except Exception as e:
-        print(f"Google content extraction error: {e}")
-        return {}
+        print(f"Error fetching statistics for video {video_id}: {e}")
+        return None, None, None, None
 
-# =========================================================
-# GOOGLE NEWS SCRAPER
-# =========================================================
-
-def _scrape_google_news(query: str, limit: int = 5) -> List[News]:
-
-    query = query.replace(" ", "%20")
-
-    url = (
-        f"https://news.google.com/search?"
-        f"q={query}&hl=en-IN&gl=IN&ceid=IN:en"
-    )
-
-    results = []
+def channelData(channel_id):
 
     try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            )
-        }
-
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=10
+        request = youtube.channels().list(
+            part="snippet,statistics",
+            id=channel_id
         )
+        response = request.execute()
 
-        if response.status_code != 200:
-            return []
+        # Channel metadata
+        channel_info = response['items'][0]
+        channel_title = channel_info['snippet']['title']
+        channel_id = channel_info['id']
+        channel_description = channel_info['snippet']['description']
+        subscriber_count = channel_info['statistics'].get('subscriberCount', 'N/A')
+        total_views = channel_info['statistics'].get('viewCount', 'N/A')
+        video_count = channel_info['statistics'].get('videoCount', 'N/A')
 
-        soup = BeautifulSoup(response.content, "html.parser")
-
-        articles = soup.find_all("article")
-
-        for article in articles[:limit]:
-
-            try:
-                title_tag = article.find("a")
-
-                if not title_tag:
-                    continue
-
-                headline = title_tag.text.strip()
-
-                partial_link = title_tag.get("href")
-
-                if not partial_link:
-                    continue
-
-                if partial_link.startswith("./"):
-                    full_link = (
-                        "https://news.google.com/"
-                        + partial_link[2:]
-                    )
-                else:
-                    full_link = partial_link
-
-                article_content = _extract_google_content(full_link)
-
-                results.append(
-                    News(
-                        headline=headline,
-                        url=full_link,
-                        publisher="Google News",
-                        description=article_content.get(
-                            "description",
-                            ""
-                        ),
-                        content=article_content.get(
-                            "articleBody",
-                            ""
-                        ),
-                        pubDate=article_content.get(
-                            "datePublished",
-                            ""
-                        )
-                    )
-                )
-
-            except Exception as e:
-                print(f"Article parse error: {e}")
-
-        return results
+        return channel_title, channel_id, subscriber_count, total_views, video_count, channel_description
 
     except Exception as e:
-        print(f"Google News scrape error: {e}")
-        return []
+        print(f"Error fetching metadata for channel {channel_id}: {e}")
+        return None, None, None, None, None, None
 
-# =========================================================
-# SCRAPE FULL ARTICLE
-# =========================================================
-
-def _scrape_full_article_body(url: str) -> str:
-
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        )
-    }
+def video_info(hashtag, latitude, longitude, radius='50km', max_results=10, start_date=None, end_date=None, csv_filename="video_data.csv"):
 
     try:
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=10
-        )
+        next_page_token = None
+        video_count = 0  # Track the total number of videos processed
 
-        response.raise_for_status()
-
-        soup = BeautifulSoup(response.content, "html.parser")
-
-        article_block = (
-            soup.find("article")
-            or soup.find("main")
-            or soup.find("div")
-        )
-
-        if article_block:
-            paragraphs = article_block.find_all("p")
-        else:
-            paragraphs = soup.find_all("p")
-
-        full_text = " ".join(
-            [
-                p.get_text(strip=True)
-                for p in paragraphs
-                if len(p.get_text(strip=True).split()) > 10
+        # Save to CSV file
+        with open(csv_filename, mode='w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = [
+                'Video Title', 'Description', 'Video URL', 'Published At',
+                'Channel Title', 'Channel ID', 'Channel Description', 'Subscriber Count',
+                'Total Views', 'Video Count', 'Views', 'Likes', 'Dislikes', 'Comments',
+                'Channel URL'
             ]
-        )
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
 
-        return full_text.strip()
-
-    except Exception as e:
-        print(f"Article scrape error: {e}")
-        return ""
-
-# =========================================================
-# NEWSAPI FETCH
-# =========================================================
-
-def _api_fetch_articles(query: str, limit: int = 5) -> List[News]:
-
-    params = {
-        "q": query,
-        "apiKey": NEWS_API_KEY,
-        "sortBy": "relevancy",
-        "language": "en",
-        "pageSize": limit
-    }
-
-    results = []
-
-    try:
-        response = requests.get(
-            NEWS_API_ENDPOINT,
-            params=params,
-            timeout=15
-        )
-
-        response.raise_for_status()
-
-        data = response.json()
-
-        if data["status"] == "ok":
-
-            for article in data["articles"]:
-
-                url = article.get("url", "")
-
-                full_content = _scrape_full_article_body(url)
-
-                results.append(
-                    News(
-                        headline=article.get("title", ""),
-                        url=url,
-                        publisher=article.get(
-                            "source",
-                            {}
-                        ).get("name", ""),
-                        description=article.get(
-                            "description",
-                            ""
-                        ),
-                        content=(
-                            full_content
-                            or article.get("content", "")
-                        ),
-                        pubDate=article.get(
-                            "publishedAt",
-                            ""
-                        )
-                    )
+            while video_count < max_results:
+                request = youtube.search().list(
+                    part="snippet",
+                    q=hashtag,
+                    type="video",
+                    location=f"{latitude},{longitude}",
+                    locationRadius=radius,
+                    maxResults=min(50, max_results - video_count),  # Request only remaining videos
+                    pageToken=next_page_token,
+                    publishedAfter=start_date.strftime('%Y-%m-%dT%H:%M:%SZ') if start_date else None,
+                    publishedBefore=end_date.strftime('%Y-%m-%dT%H:%M:%SZ') if end_date else None,
                 )
+                response = request.execute()
 
-        return results
+                for item in response.get('items', []):
+                    if video_count >= max_results:
+                        break  # Stop once max_results is reached
+
+                    video_title = item['snippet']['title']
+                    video_description = item['snippet']['description']
+                    video_id = item['id']['videoId']
+                    published_at = item['snippet']['publishedAt']
+                    channel_title = item['snippet']['channelTitle']
+                    channel_id = item['snippet']['channelId']
+
+                    # Convert the publishedAt to datetime
+                    published_datetime = datetime.strptime(published_at, '%Y-%m-%dT%H:%M:%SZ')
+
+                    # Filter by the date range if specified
+                    if start_date and end_date:
+                        if not (start_date <= published_datetime <= end_date):
+                            continue
+
+                    # Get video statistics (views, likes, dislikes, comments)
+                    views, likes, dislikes, comment_count = videoData(video_id)
+
+                    # Channel metadata
+                    channel_data = channelData(channel_id)
+                    if channel_data[0] is None:
+                        continue
+                    channel_title, channel_id, subscriber_count, total_views, video_count_data, channel_description = channel_data
+
+                    # Print video details
+                    print(f"Video {video_count + 1}:")
+                    print(f"Title: {video_title}")
+                    print(f"Description: {video_description}")
+                    print(f"Video URL: https://www.youtube.com/watch?v={video_id}")
+                    print(f"Published At: {published_at}")
+                    print(f"Channel: {channel_title}")
+                    print(f"Channel URL: https://www.youtube.com/channel/{channel_id}")
+                    print(f"Channel Description: {channel_description}")
+                    print(f"Social Blade: https://socialblade.com/youtube/channel/{channel_id}")
+                    print(f"Subscriber Count: {subscriber_count}")
+                    print(f"Total Views: {total_views}")
+                    print(f"Video Count: {video_count_data}")
+                    print(f"Views: {views}")
+                    print(f"Likes: {likes}")
+                    print(f"Comments: {comment_count}\n")
+
+                    # Write the video and channel details to the CSV file
+                    writer.writerow({
+                        'Video Title': video_title,
+                        'Description': video_description,
+                        'Video URL': f'https://www.youtube.com/watch?v={video_id}',
+                        'Published At': published_at,
+                        'Channel Title': channel_title,
+                        'Channel ID': channel_id,
+                        'Channel Description': channel_description,
+                        'Subscriber Count': str(subscriber_count),
+                        'Total Views': str(total_views),
+                        'Video Count': str(video_count_data),
+                        'Views': str(views),
+                        'Likes': str(likes),
+                        'Dislikes': str(dislikes),
+                        'Comments': str(comment_count),
+                        'Channel URL': f'https://www.youtube.com/channel/{channel_id}'
+                    })
+
+                    video_count += 1  # Increment video count
+
+                next_page_token = response.get('nextPageToken')
+                if not next_page_token:
+                    break  
 
     except Exception as e:
-        print(f"NewsAPI error: {e}")
-        return []
+        print(f"Error: {e}")
 
-# =========================================================
-# MAIN NEWS FUNCTION
-# =========================================================
 
-def get_news_list(query: str, limit: int = 5):
 
-    print(f"Searching Google News for: {query}")
-
-    google_results = _scrape_google_news(query, limit)
-
-    if google_results:
-        return google_results
-
-    print("Google News failed. Using NewsAPI fallback.")
-
-    api_results = _api_fetch_articles(query, limit)
-
-    return api_results
-
-# =========================================================
-# NVIDIA SUMMARIZER
-# =========================================================
-
-def summarize_text(text):
-
-    if not text.strip():
-        return "No text available for summarization."
-
+def total_videos_on_topic(hashtag, start_date=None, end_date=None, max_results=50):
+# ... (function body is unchanged)
+    
     try:
+        total_videos = 0
+        next_page_token = None
 
-        response = client.chat.completions.create(
-            model="meta/llama-3.1-8b-instruct",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a helpful assistant that "
-                        "summarizes news articles."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Summarize this article:\n\n{text}"
-                    )
-                }
-            ],
-            temperature=0.3,
-            max_tokens=300
-        )
+        while True:
+            request = youtube.search().list(
+                part="snippet",
+                q=hashtag,
+                type="video",
+                maxResults=max_results,
+                pageToken=next_page_token,
+                publishedAfter=start_date.strftime('%Y-%m-%dT%H:%M:%SZ') if start_date else None,
+                publishedBefore=end_date.strftime('%Y-%m-%dT%H:%M:%SZ') if end_date else None,
+            )
+            response = request.execute()
 
-        return response.choices[0].message.content
+            total_videos += len(response.get('items', []))
+            next_page_token = response.get('nextPageToken')
+            if not next_page_token:
+                break
 
+        print(f"Total videos for the topic '{hashtag}' in the given period: {total_videos}")
+        return total_videos
     except Exception as e:
+        print(f"Error : {e}")
+        return 0
 
-        import traceback
 
-        traceback.print_exc()
 
-        return f"Summarization failed: {str(e)}"
+if __name__ == "__main__":
+# ... (if __name__ is unchanged)
+    hashtag = input("Enter the hashtag to search for: ")
+    latitude = float(input("Enter the latitude: "))
+    longitude = float(input("Enter the longitude: "))
+    radius = input("Enter the radius (e.g., '50km', '1000m'): ") or '50km'
+    start_date = input("Enter the start date (YYYY-MM-DD): ")
+    end_date = input("Enter the end date (YYYY-MM-DD): ")
+    max_results = int(input("Enter the number of videos to fetch: "))
 
-# =========================================================
-# STREAMLIT UI
-# =========================================================
+    start_date = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date = datetime.strptime(end_date, "%Y-%m-%d")
 
-st.title("NetShield Context Analyzer")
-
-query = st.text_input(
-    "Enter video title or topic"
-)
-
-if st.button("Analyze"):
-
-    if not query.strip():
-        st.warning("Please enter a query.")
-        st.stop()
-
-    with st.spinner("Extracting related context..."):
-
-        articles = get_news_list(query)
-
-    if not articles:
-        st.error("No articles found.")
-        st.stop()
-
-    for idx, article in enumerate(articles, start=1):
-
-        st.subheader(f"Article {idx}")
-
-        st.write(f"### {article.headline}")
-
-        st.write(f"Publisher: {article.publisher}")
-
-        st.write(f"Published: {article.pubDate}")
-
-        st.write(f"URL: {article.url}")
-
-        content = (
-            article.content
-            or article.description
-        )
-
-        if not content:
-            st.warning("No article content found.")
-            continue
-
-        with st.spinner("Summarizing article..."):
-
-            summary = summarize_text(content)
-
-        st.success(summary)
-
-        st.divider()
+    video_info(hashtag, latitude, longitude, radius, max_results, start_date, end_date)
+    total_videos = total_videos_on_topic(hashtag, start_date, end_date)
