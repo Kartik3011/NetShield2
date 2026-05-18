@@ -4,7 +4,7 @@ from module import nextractor as nx
 import pandas as pd
 from module import translate as tst
 import os 
-# Import the News class from the module to resolve NameError
+from module.nextractor import News
 from module.nextractor import News
 
 
